@@ -1,6 +1,6 @@
 /**
  * Circuit AI - Frontend Application
- * Cyberpunk circuit learning platform
+ * Professional circuit learning platform
  */
 
 // ============================================================
@@ -18,8 +18,13 @@ const state = {
     components: [],
     wires: [],
     nextNode: 1,
+    wireMode: false,
+    eraserMode: false,
+    wireStart: null,
   },
   community: { page: 1, tag: '', search: '', sort: 'newest' },
+  quiz: { currentQuestions: [], currentIdx: 0, answers: [], categoryId: null },
+  charts: {}, // Chart.js instances
 };
 
 // ============================================================
@@ -42,6 +47,14 @@ const API = {
   post: (url, body) => API.request('POST', url, body),
   put: (url, body) => API.request('PUT', url, body),
   delete: (url) => API.request('DELETE', url),
+  upload: async (url, formData) => {
+    const opts = { method: 'POST', body: formData };
+    if (state.token) opts.headers = { 'Authorization': `Bearer ${state.token}` };
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '上传失败');
+    return data;
+  },
 };
 
 // ============================================================
@@ -70,7 +83,6 @@ function initAuth() {
     loadApp();
   }
 
-  // Tab switching
   document.querySelectorAll('.auth-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
@@ -80,7 +92,6 @@ function initAuth() {
     });
   });
 
-  // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -97,12 +108,9 @@ function initAuth() {
       document.getElementById('user-name-display').textContent = data.user.username;
       toast('登录成功 ⚡', 'success');
       loadApp();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
+    } catch (err) { toast(err.message, 'error'); }
   });
 
-  // Register
   document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -120,12 +128,9 @@ function initAuth() {
       document.getElementById('user-name-display').textContent = data.user.username;
       toast('注册成功！欢迎 ⚡', 'success');
       loadApp();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
+    } catch (err) { toast(err.message, 'error'); }
   });
 
-  // Logout
   document.getElementById('btn-logout').addEventListener('click', () => {
     state.token = '';
     state.user = null;
@@ -136,6 +141,29 @@ function initAuth() {
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
   });
+}
+
+// ============================================================
+// MOBILE NAVIGATION
+// ============================================================
+function initMobileNav() {
+  const btn = document.getElementById('btn-mobile-menu');
+  const nav = document.getElementById('nav-tabs');
+  if (btn && nav) {
+    btn.addEventListener('click', () => {
+      nav.classList.toggle('mobile-open');
+    });
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+      if (!nav.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+        nav.classList.remove('mobile-open');
+      }
+    });
+    // Close on tab click
+    nav.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => nav.classList.remove('mobile-open'));
+    });
+  }
 }
 
 // ============================================================
@@ -152,7 +180,7 @@ function initNavigation() {
       state.currentPanel = panel;
       if (panel === 'community') loadQuestions();
       if (panel === 'simulator') initSimulator();
-      if (panel === 'tools') { /* tools are static */ }
+      if (panel === 'quiz') initQuizPanel();
     });
   });
 }
@@ -185,7 +213,6 @@ function initChat() {
   document.getElementById('chat-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
-
   bindSuggestions();
 }
 
@@ -202,20 +229,15 @@ async function sendMessage() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg) return;
-
   input.value = '';
   const messagesDiv = document.getElementById('chat-messages');
-
-  // Remove welcome
   const welcome = messagesDiv.querySelector('.chat-welcome');
   if (welcome) welcome.remove();
 
-  // Add user message
   const userMsg = { role: 'user', content: msg };
   state.chatMessages.push(userMsg);
   messagesDiv.appendChild(createMsgEl(userMsg));
 
-  // Add loading placeholder
   const loading = createMsgEl({ role: 'assistant', content: '▌' });
   loading.classList.add('loading');
   messagesDiv.appendChild(loading);
@@ -227,17 +249,11 @@ async function sendMessage() {
       headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: msg, history: state.chatMessages.slice(0, -1) }),
     });
-
     loading.remove();
 
     if (res.status === 503) {
       const noKeyMsg = { role: 'assistant', content:
-        '⚠️ **AI 服务未配置**\n\n需要设置 DeepSeek API Key 才能使用 AI 导师：\n\n' +
-        '**步骤 1：** 去 [platform.deepseek.com](https://platform.deepseek.com) 注册获取 Key\n' +
-        '**步骤 2：** 终端运行：\n```\n$env:DEEPSEEK_API_KEY="sk-..."\n```\n' +
-        '**步骤 3：** 重启：\n```\ncd circuit-helper && python app.py\n```\n\n' +
-        '> 💡 新用户有免费额度\n\n' +
-        '没有 Key 也不要紧 — 问答社区、模拟器、工具箱都可以正常使用！'
+        '⚠️ **AI 服务未配置**\n\n需要设置 DeepSeek API Key 才能使用 AI 导师。\n\n去 [platform.deepseek.com](https://platform.deepseek.com) 注册获取 Key，然后设置环境变量 `DEEPSEEK_API_KEY`。\n\n没有 Key 也不要紧 — 问答社区、模拟器、工具箱、题库都可以正常使用！'
       };
       state.chatMessages.push(noKeyMsg);
       messagesDiv.appendChild(createMsgEl(noKeyMsg));
@@ -262,7 +278,6 @@ async function sendMessage() {
     state.chatMessages.push(errMsg);
     messagesDiv.appendChild(createMsgEl(errMsg));
   }
-
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
@@ -275,12 +290,11 @@ function createMsgEl(msg) {
 }
 
 function formatContent(text) {
-  // Simple markdown-like formatting
   return text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`{3}(\w*)\n([\s\S]*?)`{3}/g, '<pre><code>$2</code></pre>')
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br>')
     .replace(/\$([^$]+)\$/g, '<code>$1</code>');
@@ -311,14 +325,10 @@ async function loadChatHistory() {
           messagesDiv.scrollTop = messagesDiv.scrollHeight;
           document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
           item.classList.add('active');
-        } catch (err) {
-          toast('加载对话失败', 'error');
-        }
+        } catch (err) { toast('加载对话失败', 'error'); }
       });
     });
-  } catch (err) {
-    // Chat history load failed - non-critical
-  }
+  } catch (err) { /* non-critical */ }
 }
 
 // ============================================================
@@ -335,12 +345,9 @@ class ImageUploader {
 
   _init() {
     if (!this.dropzone || !this.fileInput) return;
-
-    // Click to select
     this.dropzone.addEventListener('click', () => this.fileInput.click());
     this.fileInput.addEventListener('change', (e) => this._handleFiles(e.target.files));
 
-    // Drag & drop
     this.dropzone.addEventListener('dragover', (e) => {
       e.preventDefault();
       this.dropzone.classList.add('drag-over');
@@ -354,22 +361,16 @@ class ImageUploader {
       this._handleFiles(e.dataTransfer.files);
     });
 
-    // Clipboard paste
     document.addEventListener('paste', (e) => {
-      // Only handle paste when this uploader's modal/form is visible
       const modal = this.dropzone.closest('.modal');
       if (modal && modal.classList.contains('hidden')) return;
-      // Also check if the panel is active for answer form
       const panel = this.dropzone.closest('#question-modal');
       if (panel && panel.classList.contains('hidden')) return;
-
       const items = e.clipboardData?.items;
       if (!items) return;
       const files = [];
       for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          files.push(item.getAsFile());
-        }
+        if (item.type.startsWith('image/')) files.push(item.getAsFile());
       }
       if (files.length) this._handleFiles(files);
     });
@@ -382,8 +383,6 @@ class ImageUploader {
         toast(`${file.name} 超过10MB限制`, 'error');
         continue;
       }
-
-      // Show loading
       const loadingEl = document.createElement('div');
       loadingEl.className = 'upload-loading';
       loadingEl.textContent = '⏳';
@@ -399,7 +398,6 @@ class ImageUploader {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail);
-
         loadingEl.remove();
         this.urls.push(data.url);
         this._addPreview(data.url);
@@ -425,10 +423,7 @@ class ImageUploader {
     this.previews.appendChild(preview);
   }
 
-  getUrls() {
-    return [...this.urls];
-  }
-
+  getUrls() { return [...this.urls]; }
   reset() {
     this.urls = [];
     this.previews.innerHTML = '';
@@ -436,7 +431,6 @@ class ImageUploader {
   }
 }
 
-// Render images inline (used in question/answer display)
 function renderImages(imageUrlsStr) {
   try {
     const urls = JSON.parse(imageUrlsStr || '[]');
@@ -464,9 +458,7 @@ async function loadQuestions() {
     const params = new URLSearchParams({ page, per_page: 20, tag, search, sort });
     const data = await API.get(`/api/questions?${params}`);
     renderQuestions(data);
-  } catch (err) {
-    toast('加载问题失败', 'error');
-  }
+  } catch (err) { toast('加载问题失败', 'error'); }
 }
 
 function renderQuestions(data) {
@@ -494,7 +486,6 @@ function renderQuestions(data) {
     card.addEventListener('click', () => viewQuestion(parseInt(card.dataset.id)));
   });
 
-  // Pagination
   const pag = document.getElementById('pagination');
   const totalPages = Math.ceil(data.total / data.per_page);
   pag.innerHTML = '';
@@ -522,7 +513,7 @@ async function viewQuestion(id) {
           <span>👤 ${escapeHtml(data.question.username)}</span>
           <span>👁 ${data.question.view_count} 浏览</span>
         </div>
-        <h3 style="color:var(--neon);">${data.answers.length} 个回答</h3>
+        <h3 style="color:var(--accent-blue);">${data.answers.length} 个回答</h3>
         ${data.answers.map(a => `
           <div class="answer-card ${a.is_accepted ? 'accepted' : ''}">
             <div class="a-content content-block">${formatContent(a.content)}</div>
@@ -531,7 +522,7 @@ async function viewQuestion(id) {
               <span>👤 ${escapeHtml(a.username)}</span>
               <span>👍 ${a.vote_score}</span>
               <span>${timeAgo(a.created_at)}</span>
-              ${a.is_accepted ? '<span style="color:var(--neon);">✅ 已采纳</span>' : ''}
+              ${a.is_accepted ? '<span style="color:var(--accent-green);">✅ 已采纳</span>' : ''}
               ${state.user && state.user.id === data.question.user_id && !a.is_accepted ?
                 `<button class="btn-small btn-accept" data-answer-id="${a.id}">采纳</button>` : ''}
             </div>
@@ -549,15 +540,13 @@ async function viewQuestion(id) {
             </div>
             <button class="btn-glow" id="btn-submit-answer">提交回答</button>
           </div>
-        ` : '<p style="color:var(--text-dim);">请登录后回答</p>'}
+        ` : '<p style="color:var(--text-muted);">请登录后回答</p>'}
       </div>`;
     modal.classList.remove('hidden');
 
-    // Close button
     modal.querySelector('.modal-close').addEventListener('click', () => modal.classList.add('hidden'));
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 
-    // Accept answer
     detail.querySelectorAll('.btn-accept').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -569,14 +558,12 @@ async function viewQuestion(id) {
       });
     });
 
-    // Set up answer image uploader
-    let answerUploader = null;
     const answerFormArea = document.getElementById('answer-form-area');
+    let answerUploader = null;
     if (answerFormArea) {
       answerUploader = new ImageUploader('answer-dropzone', 'answer-file-input', 'answer-previews');
     }
 
-    // Submit answer
     const submitBtn = document.getElementById('btn-submit-answer');
     if (submitBtn) {
       submitBtn.addEventListener('click', async () => {
@@ -590,13 +577,10 @@ async function viewQuestion(id) {
         } catch (err) { toast(err.message, 'error'); }
       });
     }
-  } catch (err) {
-    toast('加载问题失败', 'error');
-  }
+  } catch (err) { toast('加载问题失败', 'error'); }
 }
 
 function initCommunity() {
-  // Image uploader for ask form
   const askUploader = new ImageUploader('ask-dropzone', 'ask-file-input', 'ask-previews');
 
   document.getElementById('btn-ask').addEventListener('click', () => {
@@ -630,14 +614,12 @@ function initCommunity() {
     } catch (err) { toast(err.message, 'error'); }
   });
 
-  // Search
   document.getElementById('community-search').addEventListener('input', (e) => {
     state.community.search = e.target.value;
     state.community.page = 1;
     loadQuestions();
   });
 
-  // Tags
   document.querySelectorAll('#tag-cloud .tag').forEach(tag => {
     tag.addEventListener('click', () => {
       document.querySelectorAll('#tag-cloud .tag').forEach(t => t.classList.remove('active'));
@@ -648,13 +630,11 @@ function initCommunity() {
     });
   });
 
-  // Sort
   document.getElementById('sort-select').addEventListener('change', (e) => {
     state.community.sort = e.target.value;
     loadQuestions();
   });
 
-  // Close modals
   document.querySelectorAll('.modal-close').forEach(btn => {
     btn.addEventListener('click', function() { this.closest('.modal').classList.add('hidden'); });
   });
@@ -679,30 +659,28 @@ function initSimulator() {
     });
   });
 
-  // Analysis type toggle
   const analysisType = document.getElementById('analysis-type');
-  analysisType.addEventListener('change', () => {
-    document.getElementById('ac-params').classList.toggle('hidden', analysisType.value !== 'ac');
-    document.getElementById('transient-params').classList.toggle('hidden', analysisType.value !== 'transient');
-  });
+  if (analysisType) {
+    analysisType.addEventListener('change', () => {
+      document.getElementById('ac-params').classList.toggle('hidden', analysisType.value !== 'ac');
+      document.getElementById('transient-params').classList.toggle('hidden', analysisType.value !== 'transient');
+    });
+  }
 
-  // Visual builder
   initVisualBuilder();
-
-  // SPICE
-  document.getElementById('btn-spice-run').addEventListener('click', runSpiceSimulation);
-
-  // Template
+  initExportButtons();
+  document.getElementById('btn-spice-run')?.addEventListener('click', runSpiceSimulation);
   loadTemplates();
 }
 
-// ---- Visual Builder ----
+// ---- Visual Builder with Wiring ----
 function initVisualBuilder() {
   const canvas = document.getElementById('sim-canvas');
+  if (!canvas) return;
   let dragType = null;
-  let nextNodeId = 1;
+  let nextNodeId = state.simulator.nextNode || 1;
 
-  // Drag from palette
+  // Dragging from palette
   document.querySelectorAll('.comp-item').forEach(item => {
     item.addEventListener('dragstart', (e) => {
       dragType = item.dataset.type;
@@ -713,8 +691,9 @@ function initVisualBuilder() {
   canvas.addEventListener('dragover', (e) => e.preventDefault());
   canvas.addEventListener('drop', (e) => {
     e.preventDefault();
-    if (!dragType && !e.dataTransfer.getData('text/plain')) return;
+    if (state.simulator.wireMode || state.simulator.eraserMode) return;
     const type = dragType || e.dataTransfer.getData('text/plain');
+    if (!type) return;
     const rect = canvas.getBoundingClientRect();
     const scaleX = 800 / rect.width;
     const scaleY = 600 / rect.height;
@@ -732,125 +711,215 @@ function initVisualBuilder() {
     dragType = null;
   });
 
+  // Wire Mode
+  document.getElementById('btn-wire-mode')?.addEventListener('click', () => {
+    state.simulator.wireMode = !state.simulator.wireMode;
+    state.simulator.eraserMode = false;
+    state.simulator.wireStart = null;
+    const btn = document.getElementById('btn-wire-mode');
+    document.getElementById('btn-eraser-mode')?.classList.remove('active');
+    if (state.simulator.wireMode) {
+      btn.classList.add('active');
+      btn.textContent = '🔗 连线中...';
+      toast('点击一个节点开始连线，再点击另一个节点完成连线', 'info');
+    } else {
+      btn.classList.remove('active');
+      btn.textContent = '🔗 连线模式';
+    }
+  });
+
+  // Eraser Mode
+  document.getElementById('btn-eraser-mode')?.addEventListener('click', () => {
+    state.simulator.eraserMode = !state.simulator.eraserMode;
+    state.simulator.wireMode = false;
+    state.simulator.wireStart = null;
+    const btn = document.getElementById('btn-eraser-mode');
+    document.getElementById('btn-wire-mode')?.classList.remove('active');
+    if (state.simulator.eraserMode) {
+      btn.classList.add('active');
+      btn.textContent = '🧹 擦除中...';
+      toast('点击连线或元件进行删除', 'info');
+    } else {
+      btn.classList.remove('active');
+      btn.textContent = '🧹 擦除';
+    }
+  });
+
+  // Canvas click for wire/eraser
+  canvas.addEventListener('click', (e) => {
+    if (state.simulator.eraserMode) {
+      const target = e.target;
+      if (target.classList.contains('wire-line')) {
+        const wireIdx = parseInt(target.dataset.wireIdx);
+        if (!isNaN(wireIdx)) {
+          target.remove();
+          state.simulator.wires.splice(wireIdx, 1);
+          reindexWires();
+          toast('连线已删除', 'info');
+        }
+      }
+      if (target.closest('.placed-comp')) {
+        const compEl = target.closest('.placed-comp');
+        const compIdx = parseInt(compEl.dataset.compIdx);
+        if (!isNaN(compIdx)) {
+          // Remove all wires connected to this component's nodes
+          const comp = state.simulator.components[compIdx];
+          if (comp) {
+            state.simulator.wires = state.simulator.wires.filter(w =>
+              w.n1 !== comp.n1 && w.n2 !== comp.n1 && w.n1 !== comp.n2 && w.n2 !== comp.n2
+            );
+            drawAllWires(canvas);
+          }
+          compEl.remove();
+          state.simulator.components.splice(compIdx, 1);
+          reindexComps();
+          updatePlacedCount();
+          toast('元件已删除', 'info');
+        }
+      }
+      return;
+    }
+
+    if (!state.simulator.wireMode) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = 800 / rect.width;
+    const scaleY = 600 / rect.height;
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
+
+    // Find nearest node within snap distance
+    const snapDist = 20;
+    let nearestNode = null;
+    let nearestComp = null;
+    let minDist = snapDist;
+
+    state.simulator.components.forEach(comp => {
+      const el = comp.el;
+      if (!el) return;
+      const t = el.getAttribute('transform');
+      const match = t?.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (!match) return;
+      const cx_comp = parseFloat(match[1]);
+      const cy_comp = parseFloat(match[2]);
+      const n1x = cx_comp - 40, n1y = cy_comp;
+      const n2x = cx_comp + 40, n2y = cy_comp;
+
+      const d1 = Math.hypot(cx - n1x, cy - n1y);
+      if (d1 < minDist) { minDist = d1; nearestNode = comp.n1; nearestComp = comp; }
+      const d2 = Math.hypot(cx - n2x, cy - n2y);
+      if (d2 < minDist) { minDist = d2; nearestNode = comp.n2; nearestComp = comp; }
+    });
+
+    if (nearestNode === null) return;
+
+    if (state.simulator.wireStart === null) {
+      state.simulator.wireStart = nearestNode;
+      toast(`节点 ${nearestNode} 已选中，点击目标节点完成连线`, 'info');
+    } else if (state.simulator.wireStart !== nearestNode) {
+      // Create wire
+      const wire = { n1: state.simulator.wireStart, n2: nearestNode };
+      // Check for duplicate
+      const isDup = state.simulator.wires.some(w =>
+        (w.n1 === wire.n1 && w.n2 === wire.n2) || (w.n1 === wire.n2 && w.n2 === wire.n1));
+      if (!isDup) {
+        state.simulator.wires.push(wire);
+        drawAllWires(canvas);
+        toast(`连线: 节点${wire.n1} ↔ 节点${wire.n2}`, 'success');
+      }
+      state.simulator.wireStart = null;
+    } else {
+      state.simulator.wireStart = null;
+      toast('连线已取消', 'info');
+    }
+  });
+
   // Clear canvas
-  document.getElementById('btn-clear-canvas').addEventListener('click', () => {
+  document.getElementById('btn-clear-canvas')?.addEventListener('click', () => {
     state.simulator.components = [];
+    state.simulator.wires = [];
     state.simulator.nextNode = 1;
     nextNodeId = 1;
-    canvas.querySelectorAll('.placed-comp, .placed-node, .placed-label').forEach(el => el.remove());
-    document.getElementById('sim-results-content').innerHTML = '<p class="placeholder">点击「运行模拟」查看结果</p>';
+    canvas.querySelectorAll('.placed-comp, .placed-node, .placed-label, .wire-line').forEach(el => el.remove());
+    const resultsEl = document.getElementById('sim-results-content');
+    if (resultsEl) resultsEl.innerHTML = '<p class="placeholder">点击「运行模拟」查看结果</p>';
     updatePlacedCount();
   });
 
   // Simulate button
-  document.getElementById('btn-simulate').addEventListener('click', runVisualSimulation);
+  document.getElementById('btn-simulate')?.addEventListener('click', runVisualSimulation);
 }
 
 function addComponentToCanvas(canvas, type, n1, n2, x, y) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.classList.add('placed-comp');
   g.setAttribute('transform', `translate(${x},${y})`);
+  g.dataset.compIdx = state.simulator.components.length;
 
   const colors = { resistor: '#00ffff', capacitor: '#00ffff', inductor: '#00ffff',
     voltage_source_dc: '#ff6600', voltage_source_ac: '#ff6600', current_source_dc: '#ffd600', ground: '#00ff41' };
   const color = colors[type] || '#00ffff';
 
   if (type === 'resistor') {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M-40,0 L-30,0 L-25,-10 L-15,10 L-5,-10 L5,10 L15,-10 L25,10 L35,0 L40,0');
-    path.setAttribute('stroke', color); path.setAttribute('fill', 'none'); path.setAttribute('stroke-width', '2');
+    const path = docNS('path', { d: 'M-40,0 L-30,0 L-25,-10 L-15,10 L-5,-10 L5,10 L15,-10 L25,10 L35,0 L40,0', stroke: color, fill: 'none', 'stroke-width': '2' });
     g.appendChild(path);
   } else if (type === 'capacitor') {
-    const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l1.setAttribute('x1', '-40'); l1.setAttribute('y1', '0'); l1.setAttribute('x2', '-6'); l1.setAttribute('y2', '0');
-    l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '2');
-    const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l2.setAttribute('x1', '-6'); l2.setAttribute('y1', '-14'); l2.setAttribute('x2', '-6'); l2.setAttribute('y2', '14');
-    l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '2');
-    const l3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l3.setAttribute('x1', '6'); l3.setAttribute('y1', '-14'); l3.setAttribute('x2', '6'); l3.setAttribute('y2', '14');
-    l3.setAttribute('stroke', color); l3.setAttribute('stroke-width', '2');
-    const l4 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l4.setAttribute('x1', '6'); l4.setAttribute('y1', '0'); l4.setAttribute('x2', '40'); l4.setAttribute('y2', '0');
-    l4.setAttribute('stroke', color); l4.setAttribute('stroke-width', '2');
-    g.append(l1, l2, l3, l4);
+    g.append(
+      docNS('line', { x1: '-40', y1: '0', x2: '-6', y2: '0', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '-6', y1: '-14', x2: '-6', y2: '14', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '6', y1: '-14', x2: '6', y2: '14', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '6', y1: '0', x2: '40', y2: '0', stroke: color, 'stroke-width': '2' }),
+    );
   } else if (type === 'inductor') {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M-40,0 L-20,0 Q-17,-8 -14,0 Q-11,8 -8,0 Q-5,-8 -2,0 Q1,8 4,0 Q7,-8 10,0 Q13,8 16,0 Q19,-8 22,0 L40,0');
-    path.setAttribute('stroke', color); path.setAttribute('fill', 'none'); path.setAttribute('stroke-width', '2');
+    const path = docNS('path', { d: 'M-40,0 L-20,0 Q-17,-8 -14,0 Q-11,8 -8,0 Q-5,-8 -2,0 Q1,8 4,0 Q7,-8 10,0 Q13,8 16,0 Q19,-8 22,0 L40,0', stroke: color, fill: 'none', 'stroke-width': '2' });
     g.appendChild(path);
   } else if (type.startsWith('voltage_source')) {
-    const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l1.setAttribute('x1', '-40'); l1.setAttribute('y1', '0'); l1.setAttribute('x2', '-14'); l1.setAttribute('y2', '0');
-    l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '2');
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', '0'); circle.setAttribute('cy', '0'); circle.setAttribute('r', '14');
-    circle.setAttribute('stroke', color); circle.setAttribute('fill', 'none'); circle.setAttribute('stroke-width', '2');
-    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    txt.setAttribute('x', '0'); txt.setAttribute('y', '5'); txt.setAttribute('text-anchor', 'middle');
-    txt.setAttribute('fill', color); txt.setAttribute('font-size', '12');
+    g.append(
+      docNS('line', { x1: '-40', y1: '0', x2: '-14', y2: '0', stroke: color, 'stroke-width': '2' }),
+      docNS('circle', { cx: '0', cy: '0', r: '14', stroke: color, fill: 'none', 'stroke-width': '2' }),
+    );
+    const txt = docNS('text', { x: '0', y: '5', 'text-anchor': 'middle', fill: color, 'font-size': '12' });
     txt.textContent = type.includes('ac') ? '~' : 'DC';
-    const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l2.setAttribute('x1', '14'); l2.setAttribute('y1', '0'); l2.setAttribute('x2', '40'); l2.setAttribute('y2', '0');
-    l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '2');
-    g.append(l1, circle, txt, l2);
+    g.append(txt, docNS('line', { x1: '14', y1: '0', x2: '40', y2: '0', stroke: color, 'stroke-width': '2' }));
   } else if (type === 'current_source_dc') {
-    const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l1.setAttribute('x1', '-40'); l1.setAttribute('y1', '0'); l1.setAttribute('x2', '-14'); l1.setAttribute('y2', '0');
-    l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '2');
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', '0'); circle.setAttribute('cy', '0'); circle.setAttribute('r', '14');
-    circle.setAttribute('stroke', color); circle.setAttribute('fill', 'none'); circle.setAttribute('stroke-width', '2');
-    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    txt.setAttribute('x', '0'); txt.setAttribute('y', '5'); txt.setAttribute('text-anchor', 'middle');
-    txt.setAttribute('fill', color); txt.setAttribute('font-size', '14'); txt.textContent = 'I';
-    const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l2.setAttribute('x1', '14'); l2.setAttribute('y1', '0'); l2.setAttribute('x2', '40'); l2.setAttribute('y2', '0');
-    l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '2');
-    g.append(l1, circle, txt, l2);
+    g.append(
+      docNS('line', { x1: '-40', y1: '0', x2: '-14', y2: '0', stroke: color, 'stroke-width': '2' }),
+      docNS('circle', { cx: '0', cy: '0', r: '14', stroke: color, fill: 'none', 'stroke-width': '2' }),
+    );
+    const txt = docNS('text', { x: '0', y: '5', 'text-anchor': 'middle', fill: color, 'font-size': '14' });
+    txt.textContent = 'I';
+    g.append(txt, docNS('line', { x1: '14', y1: '0', x2: '40', y2: '0', stroke: color, 'stroke-width': '2' }));
   } else if (type === 'ground') {
-    const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l1.setAttribute('x1', '0'); l1.setAttribute('y1', '-10'); l1.setAttribute('x2', '0'); l1.setAttribute('y2', '0');
-    l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '2');
-    const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l2.setAttribute('x1', '-14'); l2.setAttribute('y1', '0'); l2.setAttribute('x2', '14'); l2.setAttribute('y2', '0');
-    l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '2');
-    const l3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l3.setAttribute('x1', '-9'); l3.setAttribute('y1', '6'); l3.setAttribute('x2', '9'); l3.setAttribute('y2', '6');
-    l3.setAttribute('stroke', color); l3.setAttribute('stroke-width', '2');
-    const l4 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    l4.setAttribute('x1', '-5'); l4.setAttribute('y1', '12'); l4.setAttribute('x2', '5'); l4.setAttribute('y2', '12');
-    l4.setAttribute('stroke', color); l4.setAttribute('stroke-width', '2');
-    g.append(l1, l2, l3, l4);
+    g.append(
+      docNS('line', { x1: '0', y1: '-10', x2: '0', y2: '0', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '-14', y1: '0', x2: '14', y2: '0', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '-9', y1: '6', x2: '9', y2: '6', stroke: color, 'stroke-width': '2' }),
+      docNS('line', { x1: '-5', y1: '12', x2: '5', y2: '12', stroke: color, 'stroke-width': '2' }),
+    );
   }
 
-  // Node dots
-  const n1Circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  n1Circle.setAttribute('cx', '-40'); n1Circle.setAttribute('cy', '0'); n1Circle.setAttribute('r', '4');
-  n1Circle.setAttribute('fill', '#ff6600'); n1Circle.classList.add('placed-node');
-  const n2Circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  n2Circle.setAttribute('cx', '40'); n2Circle.setAttribute('cy', '0'); n2Circle.setAttribute('r', '4');
-  n2Circle.setAttribute('fill', '#ff6600'); n2Circle.classList.add('placed-node');
-  g.append(n1Circle, n2Circle);
-
-  // Label
-  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  label.setAttribute('x', '0'); label.setAttribute('y', '-18'); label.setAttribute('text-anchor', 'middle');
-  label.setAttribute('fill', '#00ff41'); label.setAttribute('font-size', '11');
-  label.classList.add('placed-label');
+  // Load/save value
   const names = { resistor: 'R', capacitor: 'C', inductor: 'L', voltage_source_dc: 'Vdc', voltage_source_ac: 'Vac', current_source_dc: 'Idc', ground: 'GND' };
-  const idx = state.simulator.components.filter(c => c.type === type).length + 1;
-  label.textContent = `${names[type] || type}${idx}`;
-  g.appendChild(label);
+  const compName = (names[type] || type) + (state.simulator.components.filter(c => c.type === type).length + 1);
+  const valueTag = docNS('text', { x: '0', y: '-22', 'text-anchor': 'middle', fill: '#00ff41', 'font-size': '11', class: 'placed-label' });
+  valueTag.textContent = `${compName}`;
+
+  // Editable value input - double click to edit
+  g.appendChild(valueTag);
+
+  // Node dots
+  const n1Circle = docNS('circle', { cx: '-40', cy: '0', r: '5', fill: '#ff6600', class: 'placed-node', 'data-node': n1 });
+  const n2Circle = docNS('circle', { cx: '40', cy: '0', r: '5', fill: '#ff6600', class: 'placed-node', 'data-node': n2 });
+  g.append(n1Circle, n2Circle);
 
   // Make draggable
   g.style.cursor = 'move';
   let dragging = false, startX, startY, origX, origY;
   g.addEventListener('mousedown', (e) => {
+    if (state.simulator.wireMode || state.simulator.eraserMode) return;
     dragging = true;
     startX = e.clientX; startY = e.clientY;
     const t = g.getAttribute('transform');
-    const match = t.match(/translate\(([^,]+),\s*([^)]+)\)/);
+    const match = t?.match(/translate\(([^,]+),\s*([^)]+)\)/);
     origX = match ? parseFloat(match[1]) : x;
     origY = match ? parseFloat(match[2]) : y;
     e.stopPropagation();
@@ -858,163 +927,337 @@ function addComponentToCanvas(canvas, type, n1, n2, x, y) {
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     g.setAttribute('transform', `translate(${origX + e.clientX - startX},${origY + e.clientY - startY})`);
+    drawAllWires(canvas);
   });
-  document.addEventListener('mouseup', () => { dragging = false; });
+  document.addEventListener('mouseup', () => { if (dragging) { dragging = false; drawAllWires(canvas); } });
+
+  // Double click to edit component value
+  g.addEventListener('dblclick', (e) => {
+    if (state.simulator.wireMode || state.simulator.eraserMode) return;
+    e.stopPropagation();
+    const compIdx = parseInt(g.dataset.compIdx);
+    const comp = state.simulator.components[compIdx];
+    const defaults = { resistor: 1000, capacitor: 1e-6, inductor: 0.01, voltage_source_dc: 10, voltage_source_ac: 1, current_source_dc: 0.01, ground: 0 };
+    const curVal = comp.value || defaults[type] || 0;
+    const newVal = prompt(`编辑 ${compName} 的值：`, curVal);
+    if (newVal !== null && !isNaN(parseFloat(newVal))) {
+      comp.value = parseFloat(newVal);
+      valueTag.textContent = `${compName}=${comp.value}`;
+      toast(`${compName} 值已更新为 ${comp.value}`, 'success');
+    }
+  });
 
   canvas.appendChild(g);
-  state.simulator.components.push({ type, n1, n2, x, y, el: g });
+  state.simulator.components.push({ type, n1, n2, x, y, el: g, value: null, name: compName });
+  state.simulator.nextNode = Math.max(state.simulator.nextNode, n1, n2) + 1;
+}
+
+function docNS(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function drawAllWires(canvas) {
+  // Remove old wire lines
+  canvas.querySelectorAll('.wire-line').forEach(w => w.remove());
+
+  state.simulator.wires.forEach((wire, idx) => {
+    // Find positions of both nodes
+    const pos1 = getNodePosition(wire.n1);
+    const pos2 = getNodePosition(wire.n2);
+    if (!pos1 || !pos2) return;
+
+    const line = docNS('line', {
+      x1: pos1.x, y1: pos1.y,
+      x2: pos2.x, y2: pos2.y,
+      stroke: '#ffd600', 'stroke-width': '2.5',
+      'stroke-dasharray': '6,3',
+      class: 'wire-line',
+      'data-wire-idx': idx,
+    });
+    line.style.cursor = 'pointer';
+    canvas.appendChild(line);
+  });
+}
+
+function getNodePosition(nodeId) {
+  for (const comp of state.simulator.components) {
+    const el = comp.el;
+    if (!el) continue;
+    const t = el.getAttribute('transform');
+    const match = t?.match(/translate\(([^,]+),\s*([^)]+)\)/);
+    if (!match) continue;
+    const cx = parseFloat(match[1]), cy = parseFloat(match[2]);
+    if (comp.n1 === nodeId) return { x: cx - 40, y: cy };
+    if (comp.n2 === nodeId) return { x: cx + 40, y: cy };
+  }
+  return null;
+}
+
+function reindexWires() {
+  const canvas = document.getElementById('sim-canvas');
+  canvas.querySelectorAll('.wire-line').forEach((line, i) => line.dataset.wireIdx = i);
+}
+
+function reindexComps() {
+  const canvas = document.getElementById('sim-canvas');
+  canvas.querySelectorAll('.placed-comp').forEach((comp, i) => comp.dataset.compIdx = i);
 }
 
 function updatePlacedCount() {
-  document.getElementById('placed-components').textContent = `已放置 ${state.simulator.components.length} 个元件`;
+  const el = document.getElementById('placed-components');
+  if (el) {
+    el.textContent = `已放置 ${state.simulator.components.length} 个元件 · ${state.simulator.wires.length} 根连线`;
+  }
 }
 
+// ---- Export ----
+function initExportButtons() {
+  document.getElementById('btn-export-svg')?.addEventListener('click', exportSVG);
+  document.getElementById('btn-export-report')?.addEventListener('click', exportReport);
+}
+
+function exportSVG() {
+  const canvas = document.getElementById('sim-canvas');
+  if (!canvas) return;
+  // Clone canvas with all elements
+  const clone = canvas.cloneNode(true);
+  const svgData = new XMLSerializer().serializeToString(clone);
+  // Download as file
+  downloadBlob(svgData, 'circuit.svg', 'image/svg+xml');
+  toast('SVG 已导出 ✅', 'success');
+}
+
+async function exportReport() {
+  const resultsEl = document.getElementById('sim-results-content');
+  const svgCanvas = document.getElementById('sim-canvas');
+  let svgStr = '';
+  if (svgCanvas) {
+    svgStr = new XMLSerializer().serializeToString(svgCanvas);
+  }
+  try {
+    const res = await fetch('/api/export/report', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'simulation',
+        circuit_svg: svgStr,
+        analysis_type: document.getElementById('analysis-type')?.value || 'dc',
+        result: resultsEl?.innerText || 'No results',
+      }),
+    });
+    const blob = await res.blob();
+    downloadBlob(blob, 'circuit_report.html', 'text/html');
+    toast('报告已导出 ✅', 'success');
+  } catch (err) {
+    // Fallback: generate report locally
+    const reportHtml = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>Circuit Report</title>
+<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f8fafc;}
+h1{color:#0369a1;}pre{background:#f1f5f9;padding:12px;border-radius:6px;overflow-x:auto;}
+table{border-collapse:collapse;width:100%;}td,th{padding:6px 10px;border-bottom:1px solid #cbd5e1;}</style></head>
+<body><h1>⚡ Circuit Report</h1><p>${new Date().toISOString()}</p>${svgStr}<pre>${resultsEl?.innerText || ''}</pre></body></html>`;
+    downloadBlob(reportHtml, 'circuit_report.html', 'text/html');
+    toast('报告已导出 ✅', 'success');
+  }
+}
+
+function downloadBlob(content, filename, mimeType) {
+  const blob = typeof content === 'string' ? new Blob([content], { type: mimeType }) : content;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---- Visual Simulation ----
 async function runVisualSimulation() {
-  const comps = state.simulator.components.map(c => {
-    const names = { resistor: 'R', capacitor: 'C', inductor: 'L', voltage_source_dc: 'Vdc', voltage_source_ac: 'Vac', current_source_dc: 'Idc', ground: 'GND' };
-    const idx = state.simulator.components.filter(sc => sc.type === c.type).indexOf(c) + 1;
+  const comps = state.simulator.components.map((c, i) => {
+    const defaults = { resistor: 1000, capacitor: 1e-6, inductor: 0.01, voltage_source_dc: 10, voltage_source_ac: 1, current_source_dc: 0.01, ground: 0 };
     return {
       type: c.type,
-      name: `${names[c.type] || c.type}${idx}`,
-      value: c.type.includes('resistor') ? 1000 : c.type.includes('source') ? 5 : 1e-6,
+      name: c.name || `${({resistor:'R',capacitor:'C',inductor:'L',voltage_source_dc:'Vdc',voltage_source_ac:'Vac',current_source_dc:'Idc',ground:'GND'})[c.type]||c.type}${i+1}`,
+      value: c.value || defaults[c.type] || 1000,
       node1: c.n1,
       node2: c.n2,
     };
   });
 
-  const analysisType = document.getElementById('analysis-type').value;
+  const analysisType = document.getElementById('analysis-type')?.value || 'dc';
   const body = { components: comps, analysis_type: analysisType };
-  if (analysisType === 'ac') body.frequency = parseFloat(document.getElementById('ac-freq').value) || 1000;
+  if (analysisType === 'ac') body.frequency = parseFloat(document.getElementById('ac-freq')?.value) || 1000;
   if (analysisType === 'transient') {
-    body.time_start = parseFloat(document.getElementById('trans-start').value) || 0;
-    body.time_stop = parseFloat(document.getElementById('trans-stop').value) || 0.01;
-    body.time_step = parseFloat(document.getElementById('trans-step').value) || 0.0001;
+    body.time_start = parseFloat(document.getElementById('trans-start')?.value) || 0;
+    body.time_stop = parseFloat(document.getElementById('trans-stop')?.value) || 0.01;
+    body.time_step = parseFloat(document.getElementById('trans-step')?.value) || 0.0001;
   }
 
   try {
     const data = await API.post('/api/simulate', body);
     displaySimResults(data, 'sim-results-content');
   } catch (err) {
-    document.getElementById('sim-results-content').innerHTML = `<p style="color:var(--red);">${err.message}</p>`;
+    const resultsEl = document.getElementById('sim-results-content');
+    if (resultsEl) resultsEl.innerHTML = `<p style="color:var(--accent-red);">${err.message}</p>`;
   }
 }
 
 async function runSpiceSimulation() {
-  const netlist = document.getElementById('spice-netlist').value.trim();
+  const netlist = document.getElementById('spice-netlist')?.value.trim();
   if (!netlist) return toast('请输入 SPICE 网表', 'error');
-  const analysisType = document.getElementById('spice-analysis-type').value;
+  const analysisType = document.getElementById('spice-analysis-type')?.value || 'dc';
   const body = { netlist, analysis_type: analysisType };
-  if (analysisType === 'ac') body.frequency = parseFloat(document.getElementById('spice-freq').value) || 1000;
+  if (analysisType === 'ac') body.frequency = parseFloat(document.getElementById('spice-freq')?.value) || 1000;
   try {
     const data = await API.post('/api/simulate/spice', body);
     displaySimResults(data, 'spice-results-content');
   } catch (err) {
-    document.getElementById('spice-results-content').innerHTML = `<p style="color:var(--red);">${err.message}</p>`;
+    const resultsEl = document.getElementById('spice-results-content');
+    if (resultsEl) resultsEl.innerHTML = `<p style="color:var(--accent-red);">${err.message}</p>`;
   }
 }
 
 function displaySimResults(data, containerId) {
   const container = document.getElementById(containerId);
+  if (!container) return;
   if (data.error) {
-    container.innerHTML = `<p style="color:var(--red);">⚠ ${data.error}</p>`;
+    container.innerHTML = `<p style="color:var(--accent-red);">⚠ ${data.error}</p>`;
     return;
   }
 
   let html = '';
   if (data.type === 'dc') {
-    html += '<h4 style="color:var(--neon);margin-bottom:8px;">📌 DC 工作点分析</h4>';
+    html += '<h4 style="color:var(--accent-blue);margin-bottom:8px;">📌 DC 工作点分析</h4>';
     html += '<table class="result-table"><tr><th>节点</th><th>电压 (V)</th></tr>';
-    for (const [node, voltage] of Object.entries(data.node_voltages)) {
-      html += `<tr><td>${node}</td><td style="color:var(--cyan);">${voltage}</td></tr>`;
+    for (const [node, voltage] of Object.entries(data.node_voltages || {})) {
+      html += `<tr><td>${node}</td><td style="color:var(--accent-cyan);">${voltage}</td></tr>`;
     }
     html += '</table>';
     if (data.branch_currents && data.branch_currents.length) {
-      html += '<h4 style="color:var(--neon);margin:12px 0 8px;">⚡ 支路电流</h4>';
+      html += '<h4 style="color:var(--accent-blue);margin:12px 0 8px;">⚡ 支路电流</h4>';
       html += '<table class="result-table"><tr><th>元件</th><th>电压</th><th>电流</th><th>功率</th></tr>';
       for (const b of data.branch_currents) {
-        html += `<tr><td>${b.component}</td><td>${b.voltage}V</td><td style="color:var(--cyan);">${b.current}A</td><td>${b.power}W</td></tr>`;
+        html += `<tr><td>${b.component}</td><td>${b.voltage}V</td><td style="color:var(--accent-cyan);">${b.current}A</td><td>${b.power}W</td></tr>`;
       }
       html += '</table>';
     }
   } else if (data.type === 'ac') {
-    html += `<h4 style="color:var(--neon);margin-bottom:8px;">📌 AC 分析 @ ${data.frequency}Hz</h4>`;
+    html += `<h4 style="color:var(--accent-blue);margin-bottom:8px;">📌 AC 分析 @ ${data.frequency}Hz</h4>`;
     html += '<table class="result-table"><tr><th>节点</th><th>幅值</th><th>相位</th></tr>';
-    for (const [node, v] of Object.entries(data.node_voltages)) {
-      html += `<tr><td>${node}</td><td style="color:var(--cyan);">${v.magnitude}V</td><td>${v.phase_deg}°</td></tr>`;
+    for (const [node, v] of Object.entries(data.node_voltages || {})) {
+      html += `<tr><td>${node}</td><td style="color:var(--accent-cyan);">${v.magnitude}V</td><td>${v.phase_deg}°</td></tr>`;
     }
     html += '</table>';
   } else if (data.type === 'transient') {
-    html += '<h4 style="color:var(--neon);margin-bottom:8px;">📌 暂态分析</h4>';
-    html += `<p style="font-size:12px;color:var(--text-dim);">${data.points} 个时间点</p>`;
-    // Simple text table of first and last values
+    html += '<h4 style="color:var(--accent-blue);margin-bottom:8px;">📌 暂态分析</h4>';
+    html += `<p style="font-size:12px;color:var(--text-muted);">${data.points} 个时间点</p>`;
+    html += `<div class="sim-plot"><canvas id="plot-${containerId.replace('-content','')}" style="width:100%;height:280px;"></canvas></div>`;
+    // Summary table
     html += '<table class="result-table"><tr><th>节点</th><th>初始值</th><th>最终值</th></tr>';
     const t = data.data.time;
     for (const [node, vals] of Object.entries(data.data.node_voltages)) {
-      html += `<tr><td>${node}</td><td style="color:var(--cyan);">${vals[0]}V</td><td style="color:var(--cyan);">${vals[vals.length-1]}V</td></tr>`;
+      html += `<tr><td>${node}</td><td style="color:var(--accent-cyan);">${vals[0]}V</td><td style="color:var(--accent-cyan);">${vals[vals.length-1]}V</td></tr>`;
     }
     html += '</table>';
-    // Show data for plotting
-    html += `<div class="sim-plot" id="plot-${containerId}"></div>`;
-    setTimeout(() => drawTransientPlot(data.data, `plot-${containerId}`), 100);
   }
   container.innerHTML = html;
+
+  // Draw Chart.js transient plot
+  if (data.type === 'transient' && data.data) {
+    setTimeout(() => drawTransientChart(data.data, `plot-${containerId.replace('-content','')}`), 50);
+  }
 }
 
-function drawTransientPlot(transData, plotId) {
-  const plotEl = document.getElementById(plotId);
-  if (!plotEl) return;
-  const canvas = document.createElement('canvas');
-  canvas.width = plotEl.clientWidth;
-  canvas.height = 300;
-  plotEl.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
+function drawTransientChart(transData, plotId) {
+  const canvas = document.getElementById(plotId);
+  if (!canvas) return;
 
-  const t = transData.time;
-  const voltages = Object.values(transData.node_voltages);
-  if (!voltages.length || !t.length) return;
-
-  const allV = voltages.flat();
-  const vMin = Math.min(...allV), vMax = Math.max(...allV);
-  const vRange = vMax - vMin || 1;
-  const padding = 40;
-  const w = canvas.width - 2 * padding;
-  const h = canvas.height - 2 * padding;
-
-  // Grid
-  ctx.strokeStyle = '#1a3a1a';
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= 5; i++) {
-    const y = padding + h * i / 5;
-    ctx.beginPath(); ctx.moveTo(padding, y); ctx.lineTo(padding + w, y); ctx.stroke();
+  // Destroy previous chart
+  if (state.charts[plotId]) {
+    state.charts[plotId].destroy();
   }
 
-  // Axes
-  ctx.strokeStyle = '#00ff41';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(padding, padding); ctx.lineTo(padding, padding + h); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(padding, padding + h); ctx.lineTo(padding + w, padding + h); ctx.stroke();
+  const t = transData.time;
+  const datasets = [];
+  const colors = ['#38BDF8', '#F59E0B', '#22C55E', '#EF4444', '#A78BFA', '#22D3EE'];
+  let ci = 0;
 
-  // Plot each node voltage
-  const colors = ['#00ffff', '#ff6600', '#ffd600', '#ff1744', '#00ff41'];
-  voltages.forEach((vals, vi) => {
-    ctx.strokeStyle = colors[vi % colors.length];
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i < t.length; i++) {
-      const x = padding + (t[i] - t[0]) / (t[t.length-1] - t[0]) * w;
-      const y = padding + h - (vals[i] - vMin) / vRange * h;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+  for (const [node, vals] of Object.entries(transData.node_voltages)) {
+    datasets.push({
+      label: node,
+      data: vals.map((v, i) => ({ x: t[i], y: v })),
+      borderColor: colors[ci % colors.length],
+      backgroundColor: colors[ci % colors.length] + '20',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.1,
+      fill: false,
+    });
+    ci++;
+  }
+
+  // Downsample for performance if too many points
+  const maxPoints = 5000;
+  let timeData = t;
+  if (t.length > maxPoints) {
+    const step = Math.floor(t.length / maxPoints);
+    timeData = t.filter((_, i) => i % step === 0);
+  }
+
+  state.charts[plotId] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: datasets.map(d => ({
+        ...d,
+        data: d.data.filter((_, i) => i % Math.max(1, Math.floor(t.length / maxPoints)) === 0),
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#CBD5E1', font: { size: 11 }, usePointStyle: true, boxWidth: 8 },
+        },
+        tooltip: {
+          backgroundColor: '#1E293B',
+          borderColor: '#334155',
+          borderWidth: 1,
+          titleColor: '#F1F5F9',
+          bodyColor: '#CBD5E1',
+        },
+        zoom: {
+          zoom: {
+            wheel: { enabled: true, speed: 0.1 },
+            pinch: { enabled: true },
+            drag: { enabled: true, backgroundColor: 'rgba(56,189,248,0.08)', borderColor: '#38BDF8' },
+            mode: 'x',
+          },
+          pan: { enabled: true, mode: 'x' },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Time (s)', color: '#94A3B8' },
+          ticks: { color: '#64748B', font: { size: 10 }, maxTicksLimit: 12 },
+          grid: { color: '#1E293B' },
+        },
+        y: {
+          title: { display: true, text: 'Voltage (V)', color: '#94A3B8' },
+          ticks: { color: '#64748B', font: { size: 10 } },
+          grid: { color: '#1E293B' },
+        },
+      },
+    },
   });
-
-  // Labels
-  ctx.fillStyle = '#00ff41';
-  ctx.font = '11px monospace';
-  ctx.fillText(`${vMax.toFixed(2)}V`, 4, padding + 10);
-  ctx.fillText(`${vMin.toFixed(2)}V`, 4, padding + h);
-  ctx.fillText(`${t[0].toFixed(4)}s`, padding, padding + h + 16);
-  ctx.fillText(`${t[t.length-1].toFixed(4)}s`, padding + w - 60, padding + h + 16);
 }
 
 // ---- Templates ----
@@ -1022,17 +1265,21 @@ async function loadTemplates() {
   try {
     const data = await API.get('/api/templates');
     const grid = document.getElementById('template-grid');
+    if (!grid) return;
     grid.innerHTML = data.templates.map(t => `
       <div class="template-card" data-id="${t.id}">
         <h3>${t.name}</h3>
         <p>${t.description}</p>
         <div class="template-params">
-          ${Object.entries(t.params).map(([k, v]) =>
+          ${Object.entries(t.params || {}).map(([k, v]) =>
             `<label>${k}: <input type="number" class="tp-${k}" value="${v}" step="any"></label>`
           ).join('')}
         </div>
-        <button class="btn-glow btn-template-run" style="margin-top:8px;">▶ 仿真</button>
-        <div class="template-sim-result" style="margin-top:8px;"></div>
+        <div class="template-btns">
+          <button class="btn-glow btn-template-run">▶ 仿真</button>
+          <button class="btn-small btn-template-export">📄 导出报告</button>
+        </div>
+        <div class="template-sim-result"></div>
       </div>
     `).join('');
 
@@ -1041,9 +1288,8 @@ async function loadTemplates() {
         const card = e.target.closest('.template-card');
         const templateId = card.dataset.id;
         const resultDiv = card.querySelector('.template-sim-result');
-        resultDiv.innerHTML = '<span style="color:var(--text-dim);">计算中...</span>';
+        resultDiv.innerHTML = '<span style="color:var(--text-muted);">计算中...</span>';
 
-        // Build component list from params
         const inputs = card.querySelectorAll('input');
         const params = {};
         inputs.forEach(inp => {
@@ -1051,12 +1297,10 @@ async function loadTemplates() {
           params[key] = parseFloat(inp.value);
         });
 
-        // Get template and update component values
         try {
           const template = await API.get(`/api/templates/${templateId}`);
           const comps = template.components.map(c => {
             const updated = { ...c };
-            // Update value if it's in params
             for (const [k, v] of Object.entries(params)) {
               if (c.name === k) updated.value = v;
             }
@@ -1072,7 +1316,7 @@ async function loadTemplates() {
           if (simData.type === 'dc' && simData.node_voltages) {
             resultHtml = '<table class="result-table"><tr><th>节点</th><th>电压</th></tr>';
             for (const [n, v] of Object.entries(simData.node_voltages)) {
-              resultHtml += `<tr><td>${n}</td><td style="color:var(--cyan);">${v}V</td></tr>`;
+              resultHtml += `<tr><td>${n}</td><td style="color:var(--accent-cyan);">${v}V</td></tr>`;
             }
             resultHtml += '</table>';
           } else if (simData.type === 'ac' && simData.node_voltages) {
@@ -1082,17 +1326,38 @@ async function loadTemplates() {
             }
             resultHtml += '</table>';
           } else {
-            resultHtml = '<pre style="font-size:12px;">' + JSON.stringify(simData, null, 2) + '</pre>';
+            resultHtml = '<pre style="font-size:11px;">' + JSON.stringify(simData, null, 2) + '</pre>';
           }
           resultDiv.innerHTML = resultHtml;
         } catch (err) {
-          resultDiv.innerHTML = `<span style="color:var(--red);">${err.message}</span>`;
+          resultDiv.innerHTML = `<span style="color:var(--accent-red);">${err.message}</span>`;
         }
       });
     });
-  } catch (err) {
-    // Templates load failed - non-critical
-  }
+
+    // Template export buttons
+    grid.querySelectorAll('.btn-template-export').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const card = e.target.closest('.template-card');
+        const templateId = card.dataset.id;
+        const resultDiv = card.querySelector('.template-sim-result');
+        // Generate report from template
+        try {
+          const res = await fetch('/api/export/report', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'simulation', result: resultDiv.innerText }),
+          });
+          const blob = await res.blob();
+          downloadBlob(blob, `template_${templateId}_report.html`, 'text/html');
+          toast('报告已导出 ✅', 'success');
+        } catch {
+          downloadBlob(`<h1>Circuit Report - ${templateId}</h1><pre>${resultDiv.innerText}</pre>`, `template_${templateId}_report.html`, 'text/html');
+          toast('报告已导出 ✅', 'success');
+        }
+      });
+    });
+  } catch (err) { /* non-critical */ }
 }
 
 // ============================================================
@@ -1130,7 +1395,6 @@ function initTools() {
       }
     });
 
-    // Real-time resistor color code
     if (tool === 'resistor_color') {
       card.querySelectorAll('.band').forEach(select => {
         select.addEventListener('change', () => {
@@ -1147,6 +1411,193 @@ function initTools() {
       });
     }
   });
+}
+
+// ============================================================
+// QUIZ MODULE
+// ============================================================
+function initQuizPanel() {
+  loadQuizCategories();
+  loadQuizLeaderboard();
+  loadQuizStats();
+}
+
+async function loadQuizCategories() {
+  try {
+    const data = await API.get('/api/quiz/categories');
+    const container = document.getElementById('quiz-categories');
+    container.innerHTML = data.categories.map(c => `
+      <div class="quiz-category-card" data-cat-id="${c.id}">
+        <span class="quiz-cat-icon">${c.icon}</span>
+        <div>
+          <strong>${c.name}</strong>
+          <small>${c.description}</small>
+          <span class="quiz-count">${c.question_count} 题</span>
+        </div>
+        <button class="btn-small btn-start-quiz" data-cat-id="${c.id}">开始</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.btn-start-quiz').forEach(btn => {
+      btn.addEventListener('click', () => startQuiz(parseInt(btn.dataset.catId)));
+    });
+  } catch (err) { /* non-critical */ }
+}
+
+async function loadQuizLeaderboard() {
+  try {
+    const data = await API.get('/api/quiz/leaderboard');
+    const list = document.getElementById('leaderboard-list');
+    list.innerHTML = data.leaderboard.map((l, i) => `
+      <div class="leaderboard-item">
+        <span class="lb-rank">${i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`}</span>
+        <span class="lb-name">${escapeHtml(l.username)}</span>
+        <span class="lb-score">${l.total_score}分</span>
+        <small>${l.quizzes_taken}次 | ${l.avg_pct}%</small>
+      </div>
+    `).join('') || '<p style="color:var(--text-muted);">暂无数据</p>';
+  } catch (err) { /* non-critical */ }
+}
+
+async function loadQuizStats() {
+  if (!state.user) return;
+  try {
+    const data = await API.get('/api/quiz/history');
+    const total = data.history.reduce((s, r) => s + r.score, 0);
+    const quizzes = data.history.length;
+    const avg = quizzes > 0 ? Math.round(data.history.reduce((s, r) => s + (r.score/r.total*100), 0) / quizzes) : 0;
+    document.getElementById('quiz-personal-stats').innerHTML = `
+      <p>📝 已完成: <strong>${quizzes}</strong> 次测验</p>
+      <p>⭐ 总分: <strong>${total}</strong></p>
+      <p>📊 平均分: <strong>${avg}%</strong></p>
+    `;
+  } catch (err) { document.getElementById('quiz-personal-stats').textContent = '加载失败'; }
+}
+
+async function startQuiz(categoryId) {
+  state.quiz.categoryId = categoryId;
+  state.quiz.currentIdx = 0;
+  state.quiz.answers = [];
+
+  try {
+    const count = document.getElementById('quiz-question-count')?.value || 10;
+    const diff = document.getElementById('quiz-difficulty')?.value || '';
+    const params = new URLSearchParams({ category_id: categoryId, count });
+    if (diff) params.append('difficulty', diff);
+    const data = await API.get(`/api/quiz/questions?${params}`);
+    state.quiz.currentQuestions = data.questions;
+
+    if (!data.questions.length) {
+      document.getElementById('quiz-body').innerHTML = '<p style="text-align:center;padding:40px;">该分类暂无题目</p>';
+      return;
+    }
+
+    document.getElementById('quiz-header').innerHTML = '<h2>答题中...</h2>';
+    renderQuizQuestion();
+    document.getElementById('quiz-body').classList.add('quiz-active');
+  } catch (err) {
+    toast('加载题目失败: ' + err.message, 'error');
+  }
+}
+
+function renderQuizQuestion() {
+  const q = state.quiz.currentQuestions[state.quiz.currentIdx];
+  if (!q) return;
+
+  const total = state.quiz.currentQuestions.length;
+  const idx = state.quiz.currentIdx;
+
+  const diffLabels = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐' };
+
+  document.getElementById('quiz-body').innerHTML = `
+    <div class="quiz-progress">
+      <div class="quiz-progress-bar" style="width:${(idx/total*100).toFixed(0)}%"></div>
+      <span>${idx + 1} / ${total}</span>
+    </div>
+    <div class="quiz-question-card">
+      <div class="quiz-q-difficulty">${diffLabels[q.difficulty] || '⭐'}</div>
+      <h3>${idx + 1}. ${escapeHtml(q.question)}</h3>
+      <div class="quiz-options">
+        ${Object.entries(q.options).map(([key, text]) => `
+          <button class="quiz-option" data-answer="${key}">
+            <span class="option-letter">${key}</span>
+            <span>${escapeHtml(text)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('.quiz-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.quiz.answers.push({
+        question_id: q.id,
+        answer: btn.dataset.answer,
+      });
+
+      if (state.quiz.currentIdx + 1 < state.quiz.currentQuestions.length) {
+        state.quiz.currentIdx++;
+        renderQuizQuestion();
+      } else {
+        submitQuiz();
+      }
+    });
+  });
+
+  // Keyboard shortcuts
+  const keyHandler = (e) => {
+    const key = e.key.toUpperCase();
+    if (['A', 'B', 'C', 'D'].includes(key)) {
+      const btn = document.querySelector(`.quiz-option[data-answer="${key}"]`);
+      if (btn) btn.click();
+    }
+  };
+  document.addEventListener('keydown', keyHandler, { once: false });
+  // Clean up old handlers by checking if the body still has quiz-active
+}
+
+async function submitQuiz() {
+  try {
+    const data = await API.post('/api/quiz/submit', {
+      category_id: state.quiz.categoryId,
+      answers: state.quiz.answers,
+    });
+
+    document.getElementById('quiz-body').classList.remove('quiz-active');
+    document.getElementById('quiz-header').innerHTML = '<h2>📊 测验结果</h2>';
+
+    let html = `
+      <div class="quiz-result-summary">
+        <div class="quiz-score-circle" style="--score:${data.percentage}%">
+          <span class="quiz-score-num">${data.score}/${data.total}</span>
+          <span class="quiz-score-pct">${data.percentage}%</span>
+        </div>
+        <p>${data.percentage >= 80 ? '🎉 太棒了！' : data.percentage >= 60 ? '👍 不错！继续加油！' : '📚 需要多学习哦！'}</p>
+      </div>
+    `;
+
+    html += '<div class="quiz-review">';
+    data.results.forEach((r, i) => {
+      html += `
+        <div class="quiz-review-item ${r.is_correct ? 'correct' : 'wrong'}">
+          <div class="review-header">
+            <span>${i + 1}. ${escapeHtml(r.question)}</span>
+            <span>${r.is_correct ? '✅' : '❌'} 你的答案: ${r.your_answer} | 正确答案: ${r.correct_answer}</span>
+          </div>
+          <div class="review-explanation">${escapeHtml(r.explanation)}</div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    html += `<button class="btn-glow" onclick="document.querySelector('[data-panel=quiz]').click();initQuizPanel();" style="margin-top:16px;">🔄 返回题库</button>`;
+
+    document.getElementById('quiz-body').innerHTML = html;
+    loadQuizLeaderboard();
+    loadQuizStats();
+    toast(`得分: ${data.score}/${data.total} (${data.percentage}%)`, data.percentage >= 80 ? 'success' : 'info');
+  } catch (err) {
+    toast('提交失败: ' + err.message, 'error');
+  }
 }
 
 // ============================================================
@@ -1174,6 +1625,7 @@ function timeAgo(dateStr) {
 // INIT
 // ============================================================
 function loadApp() {
+  initMobileNav();
   initNavigation();
   initChat();
   loadChatHistory();

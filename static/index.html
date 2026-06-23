@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Circuit AI - 电路学习平台</title>
 <link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -65,8 +66,10 @@
       <button class="nav-tab" data-panel="community">🌐 问答社区</button>
       <button class="nav-tab" data-panel="simulator">🔧 模拟器</button>
       <button class="nav-tab" data-panel="tools">🧮 工具箱</button>
+      <button class="nav-tab" data-panel="quiz">📝 题库</button>
     </nav>
     <div class="header-right">
+      <button class="btn-small btn-mobile-menu" id="btn-mobile-menu" aria-label="菜单">☰</button>
       <span class="user-name" id="user-name-display"></span>
       <button class="btn-small" id="btn-logout">退出</button>
     </div>
@@ -238,8 +241,16 @@
                 <label>结束 (s): <input type="number" id="trans-stop" value="0.01" step="0.001"></label>
                 <label>步长 (s): <input type="number" id="trans-step" value="0.0001" step="0.00001"></label>
               </div>
+              <div class="wire-mode-toggle">
+                <button class="btn-small" id="btn-wire-mode">🔗 连线模式</button>
+                <button class="btn-small" id="btn-eraser-mode">🧹 擦除</button>
+              </div>
               <button class="btn-glow" id="btn-simulate">▶ 运行模拟</button>
               <button class="btn-small" id="btn-clear-canvas">清空</button>
+              <div class="export-btns">
+                <button class="btn-small" id="btn-export-svg">📥 导出SVG</button>
+                <button class="btn-small" id="btn-export-report">📄 导出报告</button>
+              </div>
             </div>
           </div>
           <div class="sim-canvas-area">
@@ -403,6 +414,33 @@
           </div>
           <div class="tool-result resistor-result"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Quiz Panel ===== -->
+    <section id="panel-quiz" class="panel">
+      <div class="quiz-layout">
+        <aside class="quiz-sidebar">
+          <h3>📚 题库分类</h3>
+          <div class="quiz-categories" id="quiz-categories"></div>
+          <div class="quiz-stats" id="quiz-stats">
+            <h4>📊 我的统计</h4>
+            <div id="quiz-personal-stats">加载中...</div>
+          </div>
+        </aside>
+        <div class="quiz-main">
+          <div class="quiz-header" id="quiz-header">
+            <h2>选择分类开始答题</h2>
+            <p>测试你的电路知识水平</p>
+          </div>
+          <div class="quiz-body" id="quiz-body">
+            <!-- Dynamically filled -->
+          </div>
+        </div>
+        <aside class="quiz-leaderboard" id="quiz-leaderboard-side">
+          <h3>🏆 排行榜</h3>
+          <div id="leaderboard-list">加载中...</div>
+        </aside>
       </div>
     </section>
 

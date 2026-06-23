@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circuit AI - 电路学习平台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Background grid effect -->
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<!-- Auth overlay -->
+<div id="auth-overlay" class="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h1>⚡ Circuit AI</h1>
+      <p>电路学习平台 · AI导师 + 问答社区</p>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">登录</button>
+      <button class="auth-tab" data-tab="register">注册</button>
+    </div>
+    <form id="login-form" class="auth-form active">
+      <div class="input-group">
+        <label>邮箱</label>
+        <input type="email" id="login-email" placeholder="your@email.com" required>
+      </div>
+      <div class="input-group">
+        <label>密码</label>
+        <input type="password" id="login-password" placeholder="••••••" required>
+      </div>
+      <button type="submit" class="btn-glow">进入平台 →</button>
+    </form>
+    <form id="register-form" class="auth-form">
+      <div class="input-group">
+        <label>用户名</label>
+        <input type="text" id="reg-username" placeholder="你的昵称" required minlength="2">
+      </div>
+      <div class="input-group">
+        <label>邮箱</label>
+        <input type="email" id="reg-email" placeholder="your@email.com" required>
+      </div>
+      <div class="input-group">
+        <label>密码</label>
+        <input type="password" id="reg-password" placeholder="至少6位" required minlength="6">
+      </div>
+      <button type="submit" class="btn-glow">创建账号 →</button>
+    </form>
+    <p class="auth-note">⚠ 无需真实邮箱，本地数据库，放心使用</p>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" class="app hidden">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo">⚡ Circuit AI</span>
+    </div>
+    <nav class="nav-tabs" id="nav-tabs">
+      <button class="nav-tab active" data-panel="chat">💬 AI导师</button>
+      <button class="nav-tab" data-panel="community">🌐 问答社区</button>
+      <button class="nav-tab" data-panel="simulator">🔧 模拟器</button>
+      <button class="nav-tab" data-panel="tools">🧮 工具箱</button>
+    </nav>
+    <div class="header-right">
+      <span class="user-name" id="user-name-display"></span>
+      <button class="btn-small" id="btn-logout">退出</button>
+    </div>
+  </header>
+
+  <!-- Panels -->
+  <main class="main-content">
+
+    <!-- ===== AI Chat Panel ===== -->
+    <section id="panel-chat" class="panel active">
+      <div class="chat-layout">
+        <aside class="chat-sidebar">
+          <button class="btn-glow btn-new-chat" id="btn-new-chat">+ 新对话</button>
+          <div class="chat-list" id="chat-list"></div>
+        </aside>
+        <div class="chat-main">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">
+              <h2>👋 你好！我是电路小AI</h2>
+              <p>你可以问我任何电路问题，比如：</p>
+              <div class="suggestions">
+                <button class="suggestion" data-q="什么是基尔霍夫定律？">什么是基尔霍夫定律？</button>
+                <button class="suggestion" data-q="RC电路的充放电过程是怎样的？">RC电路的充放电过程</button>
+                <button class="suggestion" data-q="帮我设计一个截止频率1kHz的低通滤波器">设计1kHz低通滤波器</button>
+                <button class="suggestion" data-q="戴维南定理和诺顿定理有什么区别？">戴维南定理vs诺顿定理</button>
+                <button class="suggestion" data-q="运算放大器的虚短虚断是什么意思？">运放的虚短虚断</button>
+                <button class="suggestion" data-q="分析这个分压电路的输出电压">分析分压电路</button>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-area">
+            <textarea id="chat-input" placeholder="输入你的电路问题..." rows="2"></textarea>
+            <button class="btn-glow" id="btn-send">发送</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Community Panel ===== -->
+    <section id="panel-community" class="panel">
+      <div class="community-layout">
+        <aside class="community-sidebar">
+          <button class="btn-glow" id="btn-ask">+ 提问</button>
+          <div class="community-filters">
+            <input type="text" id="community-search" placeholder="搜索问题...">
+            <div class="tag-cloud" id="tag-cloud">
+              <span class="tag active" data-tag="">全部</span>
+              <span class="tag" data-tag="直流电路">直流电路</span>
+              <span class="tag" data-tag="交流电路">交流电路</span>
+              <span class="tag" data-tag="模拟电子">模拟电子</span>
+              <span class="tag" data-tag="数字电路">数字电路</span>
+              <span class="tag" data-tag="运放">运放</span>
+              <span class="tag" data-tag="滤波">滤波</span>
+            </div>
+          </div>
+        </aside>
+        <div class="community-main">
+          <div class="community-header">
+            <h2>问答社区</h2>
+            <select id="sort-select">
+              <option value="newest">最新</option>
+              <option value="votes">最多投票</option>
+              <option value="views">最多浏览</option>
+            </select>
+          </div>
+          <div class="question-list" id="question-list"></div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Question Detail Modal -->
+    <div id="question-modal" class="modal hidden">
+      <div class="modal-content modal-large">
+        <button class="modal-close">&times;</button>
+        <div id="question-detail"></div>
+      </div>
+    </div>
+
+    <!-- Ask Question Modal -->
+    <div id="ask-modal" class="modal hidden">
+      <div class="modal-content">
+        <button class="modal-close">&times;</button>
+        <h2>提出问题</h2>
+        <form id="ask-form">
+          <div class="input-group">
+            <label>标题</label>
+            <input type="text" id="ask-title" placeholder="简明扼要地描述你的问题" required minlength="5">
+          </div>
+          <div class="input-group">
+            <label>详细描述</label>
+            <textarea id="ask-content" rows="8" placeholder="详细描述你的电路问题，可以包含计算过程、你已经尝试的方法等" required></textarea>
+          </div>
+          <div class="input-group">
+            <label>标签（逗号分隔）</label>
+            <input type="text" id="ask-tags" placeholder="直流电路, 分压器">
+          </div>
+          <div class="input-group">
+            <label>📷 上传图片（电路图、草稿等）</label>
+            <div class="upload-area" id="ask-upload-area">
+              <input type="file" id="ask-file-input" accept="image/*" multiple hidden>
+              <div class="upload-dropzone" id="ask-dropzone">
+                <span>📁 点击选择图片 或 Ctrl+V 粘贴</span>
+                <span style="font-size:11px;color:var(--text-dim);">支持 JPG/PNG/GIF/WebP，单张最大10MB</span>
+              </div>
+              <div class="upload-previews" id="ask-previews"></div>
+            </div>
+          </div>
+          <button type="submit" class="btn-glow">发布问题</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===== Simulator Panel ===== -->
+    <section id="panel-simulator" class="panel">
+      <div class="sim-tabs">
+        <button class="sim-tab active" data-mode="visual">🎨 可视化搭建</button>
+        <button class="sim-tab" data-mode="spice">📝 SPICE 网表</button>
+        <button class="sim-tab" data-mode="template">📋 电路模板</button>
+      </div>
+
+      <!-- Visual Builder -->
+      <div id="sim-visual" class="sim-mode active">
+        <div class="sim-layout">
+          <div class="sim-palette">
+            <h3>元件库</h3>
+            <div class="component-palette">
+              <div class="comp-item" data-type="resistor" draggable="true">
+                <svg width="60" height="30"><path d="M0,15 L5,15 L8,5 L12,25 L16,5 L20,25 L24,5 L28,25 L32,5 L36,25 L40,5 L44,25 L48,5 L52,15 L60,15" stroke="#00ffff" fill="none" stroke-width="2"/></svg>
+                <span>电阻</span>
+              </div>
+              <div class="comp-item" data-type="capacitor" draggable="true">
+                <svg width="60" height="30"><line x1="0" y1="15" x2="22" y2="15" stroke="#00ffff" stroke-width="2"/><line x1="22" y1="0" x2="22" y2="30" stroke="#00ffff" stroke-width="2"/><line x1="30" y1="0" x2="30" y2="30" stroke="#00ffff" stroke-width="2"/><line x1="30" y1="15" x2="60" y2="15" stroke="#00ffff" stroke-width="2"/></svg>
+                <span>电容</span>
+              </div>
+              <div class="comp-item" data-type="inductor" draggable="true">
+                <svg width="60" height="30"><path d="M0,15 L10,15 Q13,5 16,15 Q19,25 22,15 Q25,5 28,15 Q31,25 34,15 Q37,5 40,15 Q43,25 46,15 Q49,5 52,15 L60,15" stroke="#00ffff" fill="none" stroke-width="2"/></svg>
+                <span>电感</span>
+              </div>
+              <div class="comp-item" data-type="voltage_source_dc" draggable="true">
+                <svg width="60" height="30"><line x1="0" y1="15" x2="18" y2="15" stroke="#00ffff" stroke-width="2"/><circle cx="30" cy="15" r="12" stroke="#00ffff" fill="none" stroke-width="2"/><text x="25" y="12" fill="#00ff41" font-size="10">+</text><text x="30" y="23" fill="#00ff41" font-size="10">-</text><line x1="42" y1="15" x2="60" y2="15" stroke="#00ffff" stroke-width="2"/></svg>
+                <span>电压源DC</span>
+              </div>
+              <div class="comp-item" data-type="voltage_source_ac" draggable="true">
+                <svg width="60" height="30"><line x1="0" y1="15" x2="18" y2="15" stroke="#00ffff" stroke-width="2"/><circle cx="30" cy="15" r="12" stroke="#00ffff" fill="none" stroke-width="2"/><text x="25" y="19" fill="#00ff41" font-size="10">~</text><line x1="42" y1="15" x2="60" y2="15" stroke="#00ffff" stroke-width="2"/></svg>
+                <span>电压源AC</span>
+              </div>
+              <div class="comp-item" data-type="current_source_dc" draggable="true">
+                <svg width="60" height="30"><line x1="0" y1="15" x2="18" y2="15" stroke="#00ffff" stroke-width="2"/><circle cx="30" cy="15" r="12" stroke="#00ffff" fill="none" stroke-width="2"/><text x="26" y="19" fill="#00ff41" font-size="10">I</text><line x1="42" y1="15" x2="60" y2="15" stroke="#00ffff" stroke-width="2"/></svg>
+                <span>电流源</span>
+              </div>
+              <div class="comp-item" data-type="ground" draggable="true">
+                <svg width="40" height="30"><line x1="20" y1="0" x2="20" y2="10" stroke="#00ff41" stroke-width="2"/><line x1="10" y1="10" x2="30" y2="10" stroke="#00ff41" stroke-width="2"/><line x1="15" y1="16" x2="25" y2="16" stroke="#00ff41" stroke-width="2"/><line x1="17" y1="22" x2="23" y2="22" stroke="#00ff41" stroke-width="2"/></svg>
+                <span>接地</span>
+              </div>
+            </div>
+            <div class="analysis-controls">
+              <h3>分析类型</h3>
+              <select id="analysis-type">
+                <option value="dc">DC 直流工作点</option>
+                <option value="ac">AC 交流分析</option>
+                <option value="transient">暂态分析</option>
+              </select>
+              <div id="ac-params" class="hidden">
+                <label>频率 (Hz): <input type="number" id="ac-freq" value="1000"></label>
+              </div>
+              <div id="transient-params" class="hidden">
+                <label>开始 (s): <input type="number" id="trans-start" value="0" step="0.001"></label>
+                <label>结束 (s): <input type="number" id="trans-stop" value="0.01" step="0.001"></label>
+                <label>步长 (s): <input type="number" id="trans-step" value="0.0001" step="0.00001"></label>
+              </div>
+              <button class="btn-glow" id="btn-simulate">▶ 运行模拟</button>
+              <button class="btn-small" id="btn-clear-canvas">清空</button>
+            </div>
+          </div>
+          <div class="sim-canvas-area">
+            <svg id="sim-canvas" class="sim-canvas" viewBox="0 0 800 600">
+              <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0a3a0a" stroke-width="0.5"/>
+                </pattern>
+              </defs>
+              <rect width="800" height="600" fill="url(#grid)"/>
+            </svg>
+            <div class="circuit-info" id="placed-components">已放置 0 个元件</div>
+          </div>
+          <div class="sim-results" id="sim-results">
+            <h3>📊 分析结果</h3>
+            <div id="sim-results-content">
+              <p class="placeholder">点击「运行模拟」查看结果</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SPICE Editor -->
+      <div id="sim-spice" class="sim-mode">
+        <div class="spice-layout">
+          <div class="spice-editor-area">
+            <textarea id="spice-netlist" class="spice-editor" placeholder="输入 SPICE 网表...&#10;&#10;示例：&#10;* 分压电路&#10;V1 1 0 10&#10;R1 1 2 1000&#10;R2 2 0 2000&#10;&#10;* RC低通&#10;V1 1 0 AC 1&#10;R1 1 2 1000&#10;C1 2 0 1e-6"></textarea>
+            <div class="spice-controls">
+              <select id="spice-analysis-type">
+                <option value="dc">DC 工作点</option>
+                <option value="ac">AC 分析</option>
+                <option value="transient">暂态分析</option>
+              </select>
+              <input type="number" id="spice-freq" value="1000" placeholder="频率 Hz" class="hidden">
+              <button class="btn-glow" id="btn-spice-run">▶ 运行</button>
+            </div>
+          </div>
+          <div class="spice-results" id="spice-results">
+            <h3>📊 结果</h3>
+            <div id="spice-results-content"><p class="placeholder">运行网表以查看结果</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Template Mode -->
+      <div id="sim-template" class="sim-mode">
+        <div class="template-grid" id="template-grid"></div>
+        <div class="template-result" id="template-result">
+          <h3>📊 仿真结果</h3>
+          <div id="template-svg"></div>
+          <div id="template-data"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Tools Panel ===== -->
+    <section id="panel-tools" class="panel">
+      <div class="tools-grid">
+        <div class="tool-card" data-tool="ohms_law">
+          <h3>⚡ 欧姆定律</h3>
+          <p>V = I × R，输入任意两个求第三个</p>
+          <div class="tool-inputs">
+            <label>电压 V: <input type="number" class="tool-v" placeholder="未知则留空"></label>
+            <label>电流 I: <input type="number" class="tool-i" placeholder="未知则留空"></label>
+            <label>电阻 R: <input type="number" class="tool-r" placeholder="未知则留空"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="voltage_divider">
+          <h3>🔻 分压器</h3>
+          <p>Vout = Vin × R2/(R1+R2)</p>
+          <div class="tool-inputs">
+            <label>Vin: <input type="number" class="tool-vin" value="10"></label>
+            <label>R1 (Ω): <input type="number" class="tool-r1" value="1000"></label>
+            <label>R2 (Ω): <input type="number" class="tool-r2" value="1000"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="parallel_resistors">
+          <h3>🔀 并联电阻</h3>
+          <p>1/Req = 1/R1 + 1/R2 + ...</p>
+          <div class="tool-inputs">
+            <label>R1 (Ω): <input type="number" class="tool-r1" value="100"></label>
+            <label>R2 (Ω): <input type="number" class="tool-r2" value="200"></label>
+            <label>R3 (Ω): <input type="number" class="tool-r3" value="" placeholder="可选"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="series_resistors">
+          <h3>🔗 串联电阻</h3>
+          <p>Req = R1 + R2 + ...</p>
+          <div class="tool-inputs">
+            <label>R1 (Ω): <input type="number" class="tool-r1" value="100"></label>
+            <label>R2 (Ω): <input type="number" class="tool-r2" value="200"></label>
+            <label>R3 (Ω): <input type="number" class="tool-r3" value="" placeholder="可选"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="rc_time_constant">
+          <h3>⏱ RC 时间常数</h3>
+          <p>τ = RC, fc = 1/(2πRC)</p>
+          <div class="tool-inputs">
+            <label>R (Ω): <input type="number" class="tool-r" value="1000"></label>
+            <label>C (F): <input type="number" class="tool-c" value="0.000001" step="0.000001"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="lc_resonance">
+          <h3>📡 LC 谐振频率</h3>
+          <p>f0 = 1/(2π√(LC))</p>
+          <div class="tool-inputs">
+            <label>L (H): <input type="number" class="tool-l" value="0.01" step="0.001"></label>
+            <label>C (F): <input type="number" class="tool-c" value="0.000001" step="0.000001"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card" data-tool="power">
+          <h3>⚡ 功率计算</h3>
+          <p>P = VI = V²/R = I²R</p>
+          <div class="tool-inputs">
+            <label>V: <input type="number" class="tool-v" placeholder="可选"></label>
+            <label>I: <input type="number" class="tool-i" placeholder="可选"></label>
+            <label>R: <input type="number" class="tool-r" placeholder="可选"></label>
+          </div>
+          <button class="btn-glow tool-calc">计算</button>
+          <div class="tool-result"></div>
+        </div>
+
+        <div class="tool-card resistor-color">
+          <h3>🌈 色环电阻</h3>
+          <p>4环电阻颜色代码</p>
+          <div class="color-bands">
+            <select class="band" data-band="1">
+              <option value="">第1环</option>
+              <option value="0">黑 0</option><option value="1">棕 1</option><option value="2">红 2</option><option value="3">橙 3</option><option value="4">黄 4</option><option value="5">绿 5</option><option value="6">蓝 6</option><option value="7">紫 7</option><option value="8">灰 8</option><option value="9">白 9</option>
+            </select>
+            <select class="band" data-band="2">
+              <option value="">第2环</option>
+              <option value="0">黑 0</option><option value="1">棕 1</option><option value="2">红 2</option><option value="3">橙 3</option><option value="4">黄 4</option><option value="5">绿 5</option><option value="6">蓝 6</option><option value="7">紫 7</option><option value="8">灰 8</option><option value="9">白 9</option>
+            </select>
+            <select class="band" data-band="3">
+              <option value="">第3环(乘数)</option>
+              <option value="1">黑 ×1</option><option value="10">棕 ×10</option><option value="100">红 ×100</option><option value="1000">橙 ×1k</option><option value="10000">黄 ×10k</option><option value="100000">绿 ×100k</option><option value="1000000">蓝 ×1M</option>
+            </select>
+            <select class="band" data-band="4">
+              <option value="">第4环(误差)</option>
+              <option value="5">金 ±5%</option><option value="10">银 ±10%</option>
+            </select>
+          </div>
+          <div class="tool-result resistor-result"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
